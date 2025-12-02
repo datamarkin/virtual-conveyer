@@ -2,13 +2,13 @@ import cv2
 import numpy as np
 import random
 import os
+import math
 from config import CONFIG
 
 
 class ConveyorObject:
-    def __init__(self, image, shadow, x, y):
+    def __init__(self, image, x, y):
         self.image = image
-        self.shadow = shadow
         self.x = x
         self.y = y
 
@@ -50,11 +50,9 @@ def load_and_rotate_image(path, angle):
     return rotated
 
 
-def create_shadow(image):
-    """Create a shadow version of an image."""
-    shadow_cfg = CONFIG["shadow"]
-    if not shadow_cfg["enabled"]:
-        return None
+def create_shadow(image, opacity):
+    """Create a shadow version of an image with specified opacity."""
+    light_cfg = CONFIG["light_source"]
 
     h, w = image.shape[:2]
 
@@ -62,22 +60,60 @@ def create_shadow(image):
     alpha = image[:, :, 3].astype(np.float32) / 255.0
 
     # Apply blur
-    blur_size = shadow_cfg["blur"]
+    blur_size = light_cfg["blur"]
     if blur_size % 2 == 0:
         blur_size += 1  # Must be odd
     blurred_alpha = cv2.GaussianBlur(alpha, (blur_size, blur_size), 0)
 
     # Apply opacity
-    blurred_alpha = (blurred_alpha * shadow_cfg["opacity"] * 255).astype(np.uint8)
+    blurred_alpha = (blurred_alpha * opacity * 255).astype(np.uint8)
 
     # Create shadow image
     shadow = np.zeros((h, w, 4), dtype=np.uint8)
-    shadow[:, :, 0] = shadow_cfg["color"][0]
-    shadow[:, :, 1] = shadow_cfg["color"][1]
-    shadow[:, :, 2] = shadow_cfg["color"][2]
+    shadow[:, :, 0] = light_cfg["color"][0]
+    shadow[:, :, 1] = light_cfg["color"][1]
+    shadow[:, :, 2] = light_cfg["color"][2]
     shadow[:, :, 3] = blurred_alpha
 
     return shadow
+
+
+def calculate_shadow_params(obj_x, obj_y, obj_w, obj_h):
+    """Calculate shadow offset and opacity based on light source position."""
+    light_cfg = CONFIG["light_source"]
+
+    # Object center
+    center_x = obj_x + obj_w // 2
+    center_y = obj_y + obj_h // 2
+
+    # Vector from light to object
+    dx = center_x - light_cfg["x"]
+    dy = center_y - light_cfg["y"]
+
+    # Distance from light
+    distance = math.sqrt(dx * dx + dy * dy)
+
+    # Normalize direction
+    if distance > 0:
+        dir_x = dx / distance
+        dir_y = dy / distance
+    else:
+        dir_x, dir_y = 0, 1  # Default downward if at light position
+
+    # Shadow length scales with distance
+    shadow_length = (distance / light_cfg["reference_distance"]) * light_cfg["base_shadow_length"]
+    shadow_length = min(shadow_length, light_cfg["max_shadow_length"])
+
+    # Calculate offset
+    offset_x = dir_x * shadow_length
+    offset_y = dir_y * shadow_length
+
+    # Opacity decreases with distance (inverse relationship)
+    opacity_range = light_cfg["max_opacity"] - light_cfg["min_opacity"]
+    opacity = light_cfg["max_opacity"] - (distance / (light_cfg["reference_distance"] * 3)) * opacity_range
+    opacity = max(light_cfg["min_opacity"], min(light_cfg["max_opacity"], opacity))
+
+    return offset_x, offset_y, opacity
 
 
 def blend_image(background, foreground, x, y):
@@ -126,8 +162,6 @@ def spawn_object(screen_width, screen_height, image_paths):
     if image is None:
         return None
 
-    shadow = create_shadow(image)
-
     h, w = image.shape[:2]
 
     # Position based on direction
@@ -139,7 +173,7 @@ def spawn_object(screen_width, screen_height, image_paths):
     # Random Y position
     y = random.randint(-h // 4, screen_height - h + h // 4)
 
-    return ConveyorObject(image, shadow, x, y)
+    return ConveyorObject(image, x, y)
 
 
 def load_background(width, height):
@@ -235,7 +269,7 @@ def main():
     print(f"Resolution: {width}x{height}")
     print("Press 'q' to cancel")
 
-    shadow_cfg = CONFIG["shadow"]
+    light_cfg = CONFIG["light_source"]
     speed = CONFIG["speed"]
     direction = CONFIG["direction"]
 
@@ -273,12 +307,14 @@ def main():
                 objects.append(obj)
 
         # Draw shadows first
-        if shadow_cfg["enabled"]:
+        if light_cfg["enabled"]:
             for obj in objects:
-                if obj.shadow is not None:
-                    sx = obj.x + shadow_cfg["offset_x"]
-                    sy = obj.y + shadow_cfg["offset_y"]
-                    blend_image(frame, obj.shadow, sx, sy)
+                h, w = obj.image.shape[:2]
+                offset_x, offset_y, opacity = calculate_shadow_params(obj.x, obj.y, w, h)
+                shadow = create_shadow(obj.image, opacity)
+                sx = obj.x + int(offset_x)
+                sy = obj.y + int(offset_y)
+                blend_image(frame, shadow, sx, sy)
 
         # Draw objects
         for obj in objects:
