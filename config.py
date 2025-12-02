@@ -16,13 +16,19 @@ CONFIG = {
     "duration": 60,             # Duration in seconds
 
     # Conveyor settings
-    "speed": 5,                 # Pixels per frame
+    "speed": 50,                 # Pixels per frame
     "direction": "rtl",         # "rtl" (right-to-left) or "ltr" (left-to-right)
-    "max_images": 50,           # Max objects visible at once
+    "max_images": 20,           # Max objects visible at once
 
     # Background
     "background_image": "bg-2.jpg",   # Path to background image, or None for solid color
     "background_color": (50, 50, 50),  # BGR color if no background image
+
+    # Object spacing
+    "overlap": {
+        "allow": True,             # If False, prevents objects from overlapping
+        "min_spacing": 10,          # Minimum pixels between objects when overlap is disabled
+    },
 
     # Object appearance
     "rotation": {

@@ -146,7 +146,15 @@ def blend_image(background, foreground, x, y):
     background[y1:y2, x1:x2] = blended.astype(np.uint8)
 
 
-def spawn_object(screen_width, screen_height, image_paths):
+def check_overlap(x1, y1, w1, h1, x2, y2, w2, h2, spacing):
+    """Check if two rectangles overlap with given spacing."""
+    return not (x1 + w1 + spacing <= x2 or
+                x2 + w2 + spacing <= x1 or
+                y1 + h1 + spacing <= y2 or
+                y2 + h2 + spacing <= y1)
+
+
+def spawn_object(screen_width, screen_height, image_paths, existing_objects=None):
     """Spawn a new object at the entry edge."""
     # Pick random image
     path = random.choice(image_paths)
@@ -170,8 +178,35 @@ def spawn_object(screen_width, screen_height, image_paths):
     else:
         x = -w  # Start just off left edge
 
-    # Random Y position
-    y = random.randint(-h // 4, screen_height - h + h // 4)
+    overlap_cfg = CONFIG["overlap"]
+
+    if overlap_cfg["allow"] or existing_objects is None:
+        # Random Y position (original behavior)
+        y = random.randint(-h // 4, screen_height - h + h // 4)
+    else:
+        # Find a non-overlapping Y position
+        spacing = overlap_cfg["min_spacing"]
+        min_y = -h // 4
+        max_y = screen_height - h + h // 4
+
+        # Try random positions first
+        max_attempts = 50
+        y = None
+        for _ in range(max_attempts):
+            candidate_y = random.randint(min_y, max_y)
+            overlaps = False
+            for obj in existing_objects:
+                obj_h, obj_w = obj.image.shape[:2]
+                if check_overlap(x, candidate_y, w, h, obj.x, obj.y, obj_w, obj_h, spacing):
+                    overlaps = True
+                    break
+            if not overlaps:
+                y = candidate_y
+                break
+
+        if y is None:
+            # No valid position found, skip spawning
+            return None
 
     return ConveyorObject(image, x, y)
 
@@ -255,7 +290,7 @@ def main():
     # Initialize objects
     objects = []
     for _ in range(CONFIG["max_images"]):
-        obj = spawn_object(width, height, valid_images)
+        obj = spawn_object(width, height, valid_images, objects)
         if obj:
             # Distribute across screen initially
             if CONFIG["direction"] == "rtl":
@@ -302,9 +337,11 @@ def main():
 
         # Spawn new objects to maintain count
         while len(objects) < CONFIG["max_images"]:
-            obj = spawn_object(width, height, valid_images)
+            obj = spawn_object(width, height, valid_images, objects)
             if obj:
                 objects.append(obj)
+            else:
+                break  # No valid non-overlapping position found
 
         # Draw shadows first
         if light_cfg["enabled"]:
