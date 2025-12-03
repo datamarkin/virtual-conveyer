@@ -271,6 +271,13 @@ def main():
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    # Setup frame saving
+    save_frames_cfg = CONFIG["save_frames"]
+    if save_frames_cfg["enabled"]:
+        frames_dir = save_frames_cfg["output_dir"]
+        if not os.path.exists(frames_dir):
+            os.makedirs(frames_dir)
+
     # Check for valid images
     valid_images = [p for p in CONFIG["images"] if os.path.exists(p)]
     if not valid_images:
@@ -359,6 +366,11 @@ def main():
 
         # Write frame
         out.write(frame)
+
+        # Save frame as image
+        if save_frames_cfg["enabled"] and frame_num % save_frames_cfg["every_nth"] == 0:
+            frame_path = os.path.join(save_frames_cfg["output_dir"], f"frame_{frame_num:06d}.png")
+            cv2.imwrite(frame_path, frame)
 
         # Show preview
         if CONFIG["show_preview"]:

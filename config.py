@@ -10,10 +10,15 @@ CONFIG = {
 
     # Video output settings
     "output_file": "output/conveyor.mp4",
+    "save_frames": {
+        "enabled": True,           # Save frames as images
+        "every_nth": 10,            # Save every Nth frame
+        "output_dir": "output/images",  # Directory to save frames
+    },
     "width": 1920,              # Default 4K
     "height": 1080,             # Default 4K
     "fps": 30,                  # Default 60 FPS
-    "duration": 60,             # Duration in seconds
+    "duration": 600,             # Duration in seconds
 
     # Conveyor settings
     "speed": 50,                 # Pixels per frame
